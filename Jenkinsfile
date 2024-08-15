@@ -4,6 +4,17 @@ pipeline {
         maven 'Maven_3_5_2'
     }
     stages {
+
+        // New Stage for Setting Environment Variables
+        stage('Set Environment Variables') {
+            steps {
+                withEnv(["FOO=bar", "BAZ=qux"]) {
+                    sh 'echo FOO is $FOO'
+                    sh 'echo BAZ is $BAZ'
+                }
+            }
+        }
+
         stage('Compile and Run Sonar Analysis') {
             steps {
                 script {
