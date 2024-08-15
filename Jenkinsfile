@@ -11,17 +11,21 @@ pipeline {
         }
 
         stage('RunSCAAnalysisUsingSnyk') {
-            steps {		
-                echo 'Testing...'
-                snykSecurity(
-                    snykInstallation: 'synktool',
-                    snykTokenId: 'synk_token',
-                    failOnError: 'false',
-                    failOnIssues: 'false'
-                )
-            }
+    steps {
+        echo 'Testing...'
+        snykSecurity(
+            snykInstallation: 'synktool',
+            snykTokenId: 'synk_token',
+            failOnError: 'false',
+            failOnIssues: 'false'
+        )
+    }
+    post {
+        always {
+            echo 'This runs no matter what'
         }
-
+    }
+}
         stage('Build') { 
             steps { 
                 withDockerRegistry([credentialsId: "docker", url: ""]) {
