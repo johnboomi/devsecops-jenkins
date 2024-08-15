@@ -1,74 +1,88 @@
 pipeline {
     agent any
     tools { 
-        maven 'Maven_3_5_2'  
+        maven 'Maven_3_5_2'
     }
     stages {
-        stage('CompileandRunSonarAnalysis') {
-            steps {	
-                sh 'mvn clean verify sonar:sonar -Dsonar.projectKey=devops-project-demo-purposeku -Dsonar.organization=ddevops-projectku -Dsonar.host.url=https://sonarcloud.io -Dsonar.token=54731ecc9ab46e7390da721fee672c4367279e4d'
+        stage('Compile and Run Sonar Analysis') {
+            steps {
+                script {
+                    // Run Maven build and SonarQube analysis
+                    sh 'mvn clean verify sonar:sonar ' +
+                       '-Dsonar.projectKey=devops-project-demo-purposeku ' +
+                       '-Dsonar.organization=ddevops-projectku ' +
+                       '-Dsonar.host.url=https://sonarcloud.io ' +
+                       '-Dsonar.token=54731ecc9ab46e7390da721fee672c4367279e4d'
+                }
             }
         }
 
-        stage('RunSCAAnalysisUsingSnyk') {
-    steps {
-        echo 'Testing...'
-        snykSecurity(
-            snykInstallation: 'synktool',
-            snykTokenId: 'synk_token',
-            failOnError: 'false',
-            failOnIssues: 'false'
-        )
-    }
-    post {
-        always {
-            echo 'This runs no matter what'
+        stage('Run SCA Analysis Using Snyk') {
+            steps {
+                echo 'Running SCA Analysis with Snyk...'
+                snykSecurity(
+                    snykInstallation: 'synktool',
+                    snykTokenId: 'synk_token',
+                    failOnError: 'false',
+                    failOnIssues: 'false'
+                )
+            }
+            post {
+                always {
+                    echo 'SCA Analysis stage completed.'
+                }
+            }
         }
-    }
-}
-        stage('Build') { 
-            steps { 
-                withDockerRegistry([credentialsId: "docker", url: ""]) {
+
+        stage('Build Docker Image') {
+            steps {
+                withDockerRegistry([credentialsId: 'docker', url: '']) {
                     script {
-                        app = docker.build("secops")
+                        app = docker.build('secops')
                     }
                 }
             }
         }
 
-        stage('Push') {
+        stage('Push Docker Image') {
             steps {
                 script {
                     docker.withRegistry('https://590183914488.dkr.ecr.us-east-1.amazonaws.com/secops', 'ecr:us-east-1:aws-cred') {
-                        app.push("latest")
+                        app.push('latest')
                     }
                 }
             }
         }
 
-        stage('Kubernetes Deployment of secops Bugg Web Application') {
+        stage('Kubernetes Deployment') {
             steps {
                 withKubeConfig([credentialsId: 'kubelogin']) {
-                    sh('kubectl delete all --all -n devsecops')
-                    sh('kubectl apply -f deployment.yaml --namespace=devsecops')
+                    script {
+                        // Delete existing resources and apply new configuration
+                        sh 'kubectl delete all --all -n devsecops'
+                        sh 'kubectl apply -f deployment.yaml --namespace=devsecops'
+                    }
                 }
             }
         }
 
-        stage('wait_for_testing') {
+        stage('Wait for Deployment') {
             steps {
-                sh 'pwd; sleep 180; echo "Application Has been deployed on K8S"'
+                sh 'sleep 180; echo "Application has been deployed on K8S"'
             }
         }
-        
-        stage('RunDASTUsingZAP') {
+
+        stage('Run DAST Using ZAP') {
             steps {
                 withKubeConfig([credentialsId: 'kubelogin']) {
-                    sh('zap.sh -cmd -quickurl http://$(kubectl get services/asgbuggy --namespace=devsecops -o json| jq -r ".status.loadBalancer.ingress[] | .hostname") -quickprogress -quickout ${WORKSPACE}/zap_report.html')
-                    archiveArtifacts artifacts: 'zap_report.html'
+                    script {
+                        // Run ZAP security scan
+                        def serviceUrl = sh(script: 'kubectl get services/asgbuggy --namespace=devsecops -o json | jq -r ".status.loadBalancer.ingress[] | .hostname"', returnStdout: true).trim()
+                        sh "zap.sh -cmd -quickurl http://${serviceUrl} -quickprogress -quickout ${WORKSPACE}/zap_report.html"
+                        archiveArtifacts artifacts: 'zap_report.html'
+                    }
                 }
             }
-        } 
+        }
     }
 }
-
